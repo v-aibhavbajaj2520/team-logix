@@ -1,0 +1,30 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // User profiles are readable by all authenticated users
+    // but only writable by the owner
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Videos are readable by all authenticated users
+    // but only writable by the owner
+    match /videos/{videoId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && 
+        request.resource.data.userId == request.auth.uid;
+    }
+    
+    // Likes and matches are only readable and writable
+    // by the involved users
+    match /matches/{matchId} {
+      allow read: if request.auth != null && 
+        (resource.data.user1Id == request.auth.uid || 
+         resource.data.user2Id == request.auth.uid);
+      allow write: if request.auth != null && 
+        (request.resource.data.user1Id == request.auth.uid || 
+         request.resource.data.user2Id == request.auth.uid);
+    }
+  }
+} 
