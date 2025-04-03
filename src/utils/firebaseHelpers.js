@@ -373,30 +373,42 @@ export const updateInvestmentStatus = async (investmentId, status) => {
   }
 };
 
+// Add wallet transaction
 export const addWalletTransaction = async (userId, amount, type, description) => {
   try {
-    const transactionRef = doc(collection(db, 'walletTransactions'));
-    await setDoc(transactionRef, {
-      userId,
-      amount,
-      type, // 'deposit' or 'withdrawal'
-      description,
-      timestamp: Timestamp.now()
-    });
+    // First get current balance
+    const currentBalance = await getUserWallet(userId);
+    
+    // Calculate new balance
+    const newBalance = type === 'deposit' 
+      ? currentBalance + amount 
+      : currentBalance - amount;
 
     // Update user's wallet balance
     const userRef = doc(db, 'users', userId);
     await updateDoc(userRef, {
-      walletBalance: increment(type === 'deposit' ? amount : -amount)
+      walletBalance: newBalance
     });
 
-    return true;
+    // Add transaction record
+    const transactionRef = doc(collection(db, 'walletTransactions'));
+    await setDoc(transactionRef, {
+      userId,
+      amount,
+      type,
+      description,
+      timestamp: Timestamp.now(),
+      balance: newBalance
+    });
+
+    return newBalance;
   } catch (error) {
     console.error('Error adding wallet transaction:', error);
     throw error;
   }
 };
 
+// Get wallet transactions
 export const getWalletTransactions = async (userId) => {
   try {
     const transactionsRef = collection(db, 'walletTransactions');
@@ -409,7 +421,8 @@ export const getWalletTransactions = async (userId) => {
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({
       id: doc.id,
-      ...doc.data()
+      ...doc.data(),
+      timestamp: doc.data().timestamp?.toDate()
     }));
   } catch (error) {
     console.error('Error getting wallet transactions:', error);

@@ -11,7 +11,9 @@ import {
   Typography,
   TextField,
   IconButton,
-  Divider
+  Divider,
+  Alert,
+  Snackbar
 } from '@mui/material';
 import { Send, VerifiedUser } from '@mui/icons-material';
 
@@ -60,27 +62,132 @@ const sampleMessages = [
   // Add more sample messages
 ];
 
+const MessageBubble = ({ message, isOwn }) => (
+  <Box sx={{ 
+    display: 'flex', 
+    gap: 2, 
+    alignItems: 'flex-start',
+    justifyContent: isOwn ? 'flex-end' : 'flex-start',
+    mb: 2
+  }}>
+    {!isOwn && <Avatar>{message.sender[0]}</Avatar>}
+    <Paper sx={{ 
+      p: 2, 
+      bgcolor: isOwn ? '#1E4976' : '#122436',
+      maxWidth: '80%',
+      borderRadius: 2,
+      boxShadow: 2
+    }}>
+      {!isOwn && (
+        <Typography sx={{ 
+          color: '#fff',
+          fontWeight: 500,
+          mb: 1
+        }}>
+          {message.sender}
+        </Typography>
+      )}
+      <Typography sx={{ 
+        color: '#E0E0E0',
+        lineHeight: 1.5,
+        fontSize: '1rem'
+      }}>
+        {message.text}
+      </Typography>
+      <Typography variant="caption" sx={{ 
+        color: '#9E9E9E',
+        display: 'block',
+        mt: 1,
+        textAlign: isOwn ? 'right' : 'left'
+      }}>
+        {message.time}
+      </Typography>
+    </Paper>
+    {isOwn && <Avatar>Y</Avatar>}
+  </Box>
+);
+
 const Chat = () => {
   const [selectedChat, setSelectedChat] = useState(null);
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState(sampleMessages);
+  const [messages, setMessages] = useState([
+    {
+      id: 1,
+      sender: 'Sarah Johnson',
+      text: "Hi, I'm interested in learning more about your startup",
+      time: '10:00 AM',
+      isOwn: false
+    },
+    {
+      id: 2,
+      sender: 'You',
+      text: 'Thanks for your interest! What would you like to know?',
+      time: '10:05 AM',
+      isOwn: true
+    }
+  ]);
+  const [notification, setNotification] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
 
   const handleSendMessage = () => {
-    if (!message.trim()) return;
+    if (message.trim()) {
+      const newMessage = {
+        id: messages.length + 1,
+        sender: 'You',
+        text: message,
+        time: new Date().toLocaleTimeString([], { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          hour12: true 
+        }),
+        isOwn: true
+      };
+      
+      setMessages([...messages, newMessage]);
+      setMessage('');
+      setNotification({
+        open: true,
+        message: 'Message sent successfully!',
+        severity: 'success'
+      });
+    }
+  };
 
-    const newMessage = {
-      id: messages.length + 1,
-      senderId: 'user',
-      text: message,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-
-    setMessages([...messages, newMessage]);
-    setMessage('');
+  const handleClose = (event, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setNotification({ ...notification, open: false });
   };
 
   return (
-    <Box sx={{ flexGrow: 1, height: 'calc(100vh - 100px)' }}>
+    <Box sx={{ 
+      p: 3, 
+      bgcolor: '#1A2027', 
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column'
+    }}>
+      {/* Notification */}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={3000}
+        onClose={handleClose}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        sx={{ mt: 8 }}
+      >
+        <Alert 
+          onClose={handleClose} 
+          severity={notification.severity}
+          sx={{ width: '100%' }}
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
+
       <Grid container spacing={2} sx={{ height: '100%' }}>
         {/* Chat List */}
         <Grid item xs={3}>
@@ -173,29 +280,7 @@ const Chat = () => {
                 {/* Messages */}
                 <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}>
                   {messages.map((msg) => (
-                    <Box
-                      key={msg.id}
-                      sx={{
-                        display: 'flex',
-                        justifyContent: msg.senderId === 'user' ? 'flex-end' : 'flex-start',
-                        mb: 2
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          maxWidth: '70%',
-                          bgcolor: msg.senderId === 'user' ? 'primary.main' : 'grey.100',
-                          color: msg.senderId === 'user' ? 'white' : 'text.primary',
-                          borderRadius: 2,
-                          p: 2
-                        }}
-                      >
-                        <Typography variant="body1">{msg.text}</Typography>
-                        <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
-                          {msg.timestamp}
-                        </Typography>
-                      </Box>
-                    </Box>
+                    <MessageBubble key={msg.id} message={msg} isOwn={msg.isOwn} />
                   ))}
                 </Box>
 
@@ -208,7 +293,8 @@ const Chat = () => {
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       onKeyPress={(e) => {
-                        if (e.key === 'Enter') {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
                           handleSendMessage();
                         }
                       }}

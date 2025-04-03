@@ -74,7 +74,7 @@ const Layout = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [user, setUser] = useState(null);
   const [walletOpen, setWalletOpen] = useState(false);
-  const [addAmount, setAddAmount] = useState('');
+  const [amount, setAmount] = useState('');
   const [createPostOpen, setCreatePostOpen] = useState(false);
   const [postContent, setPostContent] = useState('');
   const [postImage, setPostImage] = useState(null);
@@ -183,17 +183,35 @@ const Layout = () => {
   };
 
   const handleAddMoney = async () => {
-    if (!addAmount || isNaN(addAmount) || addAmount <= 0) {
+    if (!amount || isNaN(amount) || amount <= 0) {
       toast.error('Please enter a valid amount');
       return;
     }
 
     try {
-      await addWalletTransaction(user.uid, Number(addAmount), 'deposit', 'Wallet deposit');
-      setWalletBalance(prev => prev + Number(addAmount));
-      setAddAmount('');
+      const user = auth.currentUser;
+      if (!user) {
+        toast.error('Please log in to add money');
+        return;
+      }
+
+      // Add transaction and get new balance
+      const newBalance = await addWalletTransaction(
+        user.uid,
+        parseFloat(amount),
+        'deposit',
+        'Wallet deposit'
+      );
+      
+      // Update local balance
+      setWalletBalance(newBalance);
+      setAmount('');
       setWalletOpen(false);
       toast.success('Money added successfully!');
+
+      // Refresh transactions
+      const updatedTransactions = await getWalletTransactions(user.uid);
+      setTransactions(updatedTransactions);
     } catch (error) {
       console.error('Error adding money:', error);
       toast.error('Failed to add money. Please try again.');
@@ -201,22 +219,40 @@ const Layout = () => {
   };
 
   const handleWithdrawMoney = async () => {
-    if (!addAmount || isNaN(addAmount) || addAmount <= 0) {
+    if (!amount || isNaN(amount) || amount <= 0) {
       toast.error('Please enter a valid amount');
       return;
     }
 
-    if (Number(addAmount) > walletBalance) {
+    if (parseFloat(amount) > walletBalance) {
       toast.error('Insufficient balance');
       return;
     }
 
     try {
-      await addWalletTransaction(user.uid, Number(addAmount), 'withdrawal', 'Wallet withdrawal');
-      setWalletBalance(prev => prev - Number(addAmount));
-      setAddAmount('');
+      const user = auth.currentUser;
+      if (!user) {
+        toast.error('Please log in to withdraw money');
+        return;
+      }
+
+      // Add transaction and get new balance
+      const newBalance = await addWalletTransaction(
+        user.uid,
+        parseFloat(amount),
+        'withdrawal',
+        'Wallet withdrawal'
+      );
+      
+      // Update local balance
+      setWalletBalance(newBalance);
+      setAmount('');
       setWalletOpen(false);
       toast.success('Money withdrawn successfully!');
+
+      // Refresh transactions
+      const updatedTransactions = await getWalletTransactions(user.uid);
+      setTransactions(updatedTransactions);
     } catch (error) {
       console.error('Error withdrawing money:', error);
       toast.error('Failed to withdraw money. Please try again.');
@@ -466,8 +502,8 @@ const Layout = () => {
             label="Amount"
             type="number"
             fullWidth
-            value={addAmount}
-            onChange={(e) => setAddAmount(e.target.value)}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
           />
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
             Current Balance: ${walletBalance.toFixed(2)}
