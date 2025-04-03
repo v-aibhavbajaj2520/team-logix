@@ -4,13 +4,12 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
-// Your web app's Firebase configuration
+// Initialize Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyBOeFy8xQz4VBcVS66CPxHPaaKglt5_cPY",
   authDomain: "roopsunderi.firebaseapp.com",
   projectId: "roopsunderi",
-  databaseURL: "https://roopsunderi-default-rtdb.firebaseio.com/",
-  storageBucket: "roopsunderi.firebasestorage.app",
+  storageBucket: "roopsunderi.appspot.com",
   messagingSenderId: "159577295862",
   appId: "1:159577295862:web:56a5e2e04fe85af7e4d5d7"
 };
@@ -24,5 +23,4 @@ const db = getFirestore(app);
 const storage = getStorage(app);
 
 export { auth, db, storage };
-
 export default app;

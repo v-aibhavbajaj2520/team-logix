@@ -11,7 +11,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField
+  TextField,
+  Paper
 } from '@mui/material';
 import {
   Favorite,
@@ -21,10 +22,11 @@ import {
   AttachMoney
 } from '@mui/icons-material';
 import { auth } from '../firebase';
-import { trackInvestment } from '../utils/firebaseHelpers';
+import { trackInvestment, getUserWallet, updateWalletBalance } from '../utils/firebaseHelpers';
 import { toast } from 'react-toastify';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useNavigate } from 'react-router-dom';
 
 // Temporary video data
 const TEMP_VIDEOS = [
@@ -80,6 +82,12 @@ const VideoFeed = ({ onProfileView }) => {
   const [paymentDialog, setPaymentDialog] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [rechargeDialog, setRechargeDialog] = useState(false);
+  const [rechargeAmount, setRechargeAmount] = useState('');
+  const [withdrawDialog, setWithdrawDialog] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const navigate = useNavigate();
 
   const handleVideoLoad = () => {
     setIsLoading(false);
@@ -93,6 +101,22 @@ const VideoFeed = ({ onProfileView }) => {
   useEffect(() => {
     setIsLoading(true);
   }, [currentIndex]);
+
+  useEffect(() => {
+    const loadWalletBalance = async () => {
+      try {
+        const user = auth.currentUser;
+        if (user) {
+          const balance = await getUserWallet(user.uid);
+          setWalletBalance(balance);
+        }
+      } catch (error) {
+        console.error('Error loading wallet balance:', error);
+      }
+    };
+
+    loadWalletBalance();
+  }, []);
 
   const handleLike = (videoId) => {
     setLikes(prev => ({
@@ -113,8 +137,8 @@ const VideoFeed = ({ onProfileView }) => {
   };
 
   const handleConnect = (video) => {
-    // Implement connect functionality
-    console.log('Connect with:', video.creator);
+    // Redirect to chat with the creator
+    navigate(`/chats?userId=${video.creatorId}`);
   };
 
   const handlePaymentOpen = () => {
@@ -124,6 +148,56 @@ const VideoFeed = ({ onProfileView }) => {
   const handlePaymentClose = () => {
     setPaymentDialog(false);
     setPaymentAmount('');
+  };
+
+  const handleRecharge = async () => {
+    const amount = parseFloat(rechargeAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        toast.error('Please log in to recharge');
+        return;
+      }
+
+      const newBalance = await updateWalletBalance(user.uid, amount, 'add');
+      setWalletBalance(newBalance);
+      setRechargeDialog(false);
+      setRechargeAmount('');
+      toast.success(`Successfully recharged $${amount}`);
+    } catch (error) {
+      console.error('Error recharging wallet:', error);
+      toast.error('Failed to recharge wallet');
+    }
+  };
+
+  const handleWithdraw = async () => {
+    const amount = parseFloat(withdrawAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        toast.error('Please log in to withdraw');
+        return;
+      }
+
+      const newBalance = await updateWalletBalance(user.uid, amount, 'subtract');
+      setWalletBalance(newBalance);
+      setWithdrawDialog(false);
+      setWithdrawAmount('');
+      toast.success(`Successfully withdrew $${amount}`);
+    } catch (error) {
+      console.error('Error withdrawing from wallet:', error);
+      toast.error(error.message || 'Failed to withdraw from wallet');
+    }
   };
 
   const handlePaymentSubmit = async () => {
@@ -140,13 +214,23 @@ const VideoFeed = ({ onProfileView }) => {
         return;
       }
 
-      // Add investment to user's profile with amount
+      // Check wallet balance
+      if (walletBalance < amount) {
+        toast.error('Insufficient wallet balance');
+        return;
+      }
+
+      // Track investment
       await trackInvestment(user.uid, {
-        ...TEMP_VIDEOS[currentIndex],
+        videoId: TEMP_VIDEOS[currentIndex].id,
+        title: TEMP_VIDEOS[currentIndex].title,
+        creator: TEMP_VIDEOS[currentIndex].creator,
+        domain: TEMP_VIDEOS[currentIndex].description.split(' ')[0],
         amount,
-        timestamp: new Date().toISOString(),
-        thumbnailUrl: `https://img.youtube.com/vi/${TEMP_VIDEOS[currentIndex].id}/maxresdefault.jpg`
       });
+
+      // Update local wallet balance
+      setWalletBalance(prev => prev - amount);
 
       setShowPaymentSuccess(true);
       setTimeout(() => {
@@ -156,8 +240,8 @@ const VideoFeed = ({ onProfileView }) => {
 
       toast.success(`Successfully invested $${amount}`);
     } catch (error) {
-      console.error('Error processing payment:', error);
-      toast.error('Failed to process payment');
+      console.error('Error processing investment:', error);
+      toast.error(error.message || 'Failed to process investment');
     }
   };
 
@@ -444,6 +528,79 @@ const VideoFeed = ({ onProfileView }) => {
           <Favorite sx={{ color: '#00c853' }} />
         </IconButton>
       </Box>
+
+      {/* Wallet Balance Display */}
+      <Box sx={{ position: 'fixed', top: 16, right: 16, zIndex: 1000 }}>
+        <Paper sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Typography variant="h6">
+            Wallet: ${walletBalance.toFixed(2)}
+          </Typography>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => setRechargeDialog(true)}
+          >
+            Recharge
+          </Button>
+          <Button
+            variant="outlined"
+            color="primary"
+            onClick={() => setWithdrawDialog(true)}
+          >
+            Withdraw
+          </Button>
+        </Paper>
+      </Box>
+
+      {/* Recharge Dialog */}
+      <Dialog open={rechargeDialog} onClose={() => setRechargeDialog(false)}>
+        <DialogTitle>Recharge Wallet</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Amount ($)"
+            type="number"
+            fullWidth
+            value={rechargeAmount}
+            onChange={(e) => setRechargeAmount(e.target.value)}
+            InputProps={{
+              startAdornment: '$'
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRechargeDialog(false)}>Cancel</Button>
+          <Button onClick={handleRecharge} variant="contained" color="primary">
+            Recharge
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Withdraw Dialog */}
+      <Dialog open={withdrawDialog} onClose={() => setWithdrawDialog(false)}>
+        <DialogTitle>Withdraw from Wallet</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Amount ($)"
+            type="number"
+            fullWidth
+            value={withdrawAmount}
+            onChange={(e) => setWithdrawAmount(e.target.value)}
+            InputProps={{
+              startAdornment: '$'
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setWithdrawDialog(false)}>Cancel</Button>
+          <Button onClick={handleWithdraw} variant="contained" color="primary">
+            Withdraw
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

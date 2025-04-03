@@ -76,7 +76,8 @@ const Register = () => {
         company: '',
         position: '',
         description: '',
-        investments: []
+        investments: [],
+        walletBalance: 0 // Initialize wallet balance
       });
 
       // Navigate to dashboard
