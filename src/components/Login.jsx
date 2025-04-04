@@ -28,7 +28,7 @@ const Login = () => {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       console.log('Sign in successful:', userCredential.user);
       toast.success('Successfully logged in!');
-      navigate('/dashboard');
+      navigate('/');
     } catch (error) {
       console.error('Login error:', error.code, error.message);
       let errorMessage = 'An error occurred during login.';

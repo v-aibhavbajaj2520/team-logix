@@ -80,8 +80,8 @@ const Register = () => {
         walletBalance: 0 // Initialize wallet balance
       });
 
-      // Navigate to dashboard
-      navigate('/dashboard');
+      // Navigate to home
+      navigate('/');
     } catch (error) {
       console.error('Registration error:', error);
       setError(
