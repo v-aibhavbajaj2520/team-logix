@@ -13,7 +13,8 @@ import {
   setDoc,
   orderBy,
   Timestamp,
-  increment
+  increment,
+  limit
 } from 'firebase/firestore';
 
 // User Profile Operations
@@ -100,43 +101,58 @@ export const searchUsers = async (searchQuery) => {
 };
 
 // Get user's wallet balance
-export const getUserWallet = async (userId) => {
+export const getUserWalletBalance = async (userId) => {
   try {
-    const userRef = doc(db, 'users', userId);
-    const userDoc = await getDoc(userRef);
-    return userDoc.exists() ? userDoc.data().walletBalance || 0 : 0;
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    return userDoc.data()?.walletBalance || 0;
   } catch (error) {
     console.error('Error getting wallet balance:', error);
     throw error;
   }
 };
 
-// Update wallet balance
-export const updateWalletBalance = async (userId, amount, type = 'add') => {
+// Update user's wallet balance
+export const updateWalletBalance = async (userId, newBalance) => {
   try {
-    const userRef = doc(db, 'users', userId);
-    const userDoc = await getDoc(userRef);
-    
-    if (!userDoc.exists()) {
-      throw new Error('User not found');
-    }
-
-    const currentBalance = userDoc.data().walletBalance || 0;
-    const newBalance = type === 'add' 
-      ? currentBalance + amount 
-      : currentBalance - amount;
-
-    if (newBalance < 0) {
-      throw new Error('Insufficient balance');
-    }
-
-    await updateDoc(userRef, {
+    await updateDoc(doc(db, 'users', userId), {
       walletBalance: newBalance
     });
-
-    return newBalance;
   } catch (error) {
     console.error('Error updating wallet balance:', error);
+    throw error;
+  }
+};
+
+// Track wallet transaction history
+export const addWalletTransaction = async (userId, transactionData) => {
+  try {
+    const transactionRef = collection(db, 'users', userId, 'transactions');
+    await addDoc(transactionRef, {
+      ...transactionData,
+      timestamp: Timestamp.now(),
+    });
+  } catch (error) {
+    console.error('Error adding transaction:', error);
+    throw error;
+  }
+};
+
+// Get user's transaction history
+export const getWalletTransactions = async (userId, limit = 10) => {
+  try {
+    const transactionsRef = collection(db, 'users', userId, 'transactions');
+    const q = query(
+      transactionsRef,
+      orderBy('timestamp', 'desc'),
+      limit(limit)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error('Error getting transactions:', error);
     throw error;
   }
 };
@@ -148,13 +164,13 @@ export const trackInvestment = async (userId, investmentData) => {
     const timestamp = Timestamp.now();
 
     // Check wallet balance
-    const walletBalance = await getUserWallet(userId);
+    const walletBalance = await getUserWalletBalance(userId);
     if (walletBalance < amount) {
       throw new Error('Insufficient wallet balance');
     }
 
     // Deduct from wallet
-    await updateWalletBalance(userId, amount, 'subtract');
+    await updateWalletBalance(userId, walletBalance - amount);
 
     // Add to investments collection
     const investmentRef = doc(collection(db, 'investments'));
@@ -369,63 +385,6 @@ export const updateInvestmentStatus = async (investmentId, status) => {
     });
   } catch (error) {
     console.error('Error updating investment status:', error);
-    throw error;
-  }
-};
-
-// Add wallet transaction
-export const addWalletTransaction = async (userId, amount, type, description) => {
-  try {
-    // First get current balance
-    const currentBalance = await getUserWallet(userId);
-    
-    // Calculate new balance
-    const newBalance = type === 'deposit' 
-      ? currentBalance + amount 
-      : currentBalance - amount;
-
-    // Update user's wallet balance
-    const userRef = doc(db, 'users', userId);
-    await updateDoc(userRef, {
-      walletBalance: newBalance
-    });
-
-    // Add transaction record
-    const transactionRef = doc(collection(db, 'walletTransactions'));
-    await setDoc(transactionRef, {
-      userId,
-      amount,
-      type,
-      description,
-      timestamp: Timestamp.now(),
-      balance: newBalance
-    });
-
-    return newBalance;
-  } catch (error) {
-    console.error('Error adding wallet transaction:', error);
-    throw error;
-  }
-};
-
-// Get wallet transactions
-export const getWalletTransactions = async (userId) => {
-  try {
-    const transactionsRef = collection(db, 'walletTransactions');
-    const q = query(
-      transactionsRef,
-      where('userId', '==', userId),
-      orderBy('timestamp', 'desc')
-    );
-    
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      timestamp: doc.data().timestamp?.toDate()
-    }));
-  } catch (error) {
-    console.error('Error getting wallet transactions:', error);
     throw error;
   }
 }; 

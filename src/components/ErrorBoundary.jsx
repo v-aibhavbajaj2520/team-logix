@@ -27,7 +27,7 @@ const ErrorBoundary = () => {
       <Box sx={{ mt: 4 }}>
         <Button
           variant="contained"
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/login')}
           sx={{ mr: 2 }}
         >
           Go Home

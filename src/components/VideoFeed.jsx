@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   IconButton,
@@ -11,22 +12,22 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
-  Paper
+  TextField
 } from '@mui/material';
 import {
   Favorite,
   Close,
   ThumbUp,
   BusinessCenter,
-  AttachMoney
+  AttachMoney,
+  ArrowBack,
+  ArrowForward
 } from '@mui/icons-material';
 import { auth } from '../firebase';
-import { trackInvestment, getUserWallet, updateWalletBalance } from '../utils/firebaseHelpers';
+import { trackInvestment, getUserWalletBalance } from '../utils/firebaseHelpers';
 import { toast } from 'react-toastify';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
-import { useNavigate } from 'react-router-dom';
 
 // Temporary video data
 const TEMP_VIDEOS = [
@@ -70,6 +71,7 @@ const TEMP_VIDEOS = [
 const SWIPE_THRESHOLD = 100; // minimum distance for a swipe
 
 const VideoFeed = ({ onProfileView }) => {
+  const navigate = useNavigate();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [touchStart, setTouchStart] = useState(null);
   const [touchEnd, setTouchEnd] = useState(null);
@@ -82,12 +84,7 @@ const VideoFeed = ({ onProfileView }) => {
   const [paymentDialog, setPaymentDialog] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
-  const [walletBalance, setWalletBalance] = useState(0);
-  const [rechargeDialog, setRechargeDialog] = useState(false);
-  const [rechargeAmount, setRechargeAmount] = useState('');
-  const [withdrawDialog, setWithdrawDialog] = useState(false);
-  const [withdrawAmount, setWithdrawAmount] = useState('');
-  const navigate = useNavigate();
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
 
   const handleVideoLoad = () => {
     setIsLoading(false);
@@ -102,20 +99,12 @@ const VideoFeed = ({ onProfileView }) => {
     setIsLoading(true);
   }, [currentIndex]);
 
+  // Detect touch capability when component mounts
   useEffect(() => {
-    const loadWalletBalance = async () => {
-      try {
-        const user = auth.currentUser;
-        if (user) {
-          const balance = await getUserWallet(user.uid);
-          setWalletBalance(balance);
-        }
-      } catch (error) {
-        console.error('Error loading wallet balance:', error);
-      }
-    };
-
-    loadWalletBalance();
+    const hasTouchCapability = 'ontouchstart' in window || 
+                              navigator.maxTouchPoints > 0 ||
+                              navigator.msMaxTouchPoints > 0;
+    setIsTouchDevice(hasTouchCapability);
   }, []);
 
   const handleLike = (videoId) => {
@@ -137,8 +126,8 @@ const VideoFeed = ({ onProfileView }) => {
   };
 
   const handleConnect = (video) => {
-    // Redirect to chat with the creator
-    navigate(`/chats?userId=${video.creatorId}`);
+    // Implement connect functionality
+    console.log('Connect with:', video.creator);
   };
 
   const handlePaymentOpen = () => {
@@ -148,56 +137,6 @@ const VideoFeed = ({ onProfileView }) => {
   const handlePaymentClose = () => {
     setPaymentDialog(false);
     setPaymentAmount('');
-  };
-
-  const handleRecharge = async () => {
-    const amount = parseFloat(rechargeAmount);
-    if (isNaN(amount) || amount <= 0) {
-      toast.error('Please enter a valid amount');
-      return;
-    }
-
-    try {
-      const user = auth.currentUser;
-      if (!user) {
-        toast.error('Please log in to recharge');
-        return;
-      }
-
-      const newBalance = await updateWalletBalance(user.uid, amount, 'add');
-      setWalletBalance(newBalance);
-      setRechargeDialog(false);
-      setRechargeAmount('');
-      toast.success(`Successfully recharged $${amount}`);
-    } catch (error) {
-      console.error('Error recharging wallet:', error);
-      toast.error('Failed to recharge wallet');
-    }
-  };
-
-  const handleWithdraw = async () => {
-    const amount = parseFloat(withdrawAmount);
-    if (isNaN(amount) || amount <= 0) {
-      toast.error('Please enter a valid amount');
-      return;
-    }
-
-    try {
-      const user = auth.currentUser;
-      if (!user) {
-        toast.error('Please log in to withdraw');
-        return;
-      }
-
-      const newBalance = await updateWalletBalance(user.uid, amount, 'subtract');
-      setWalletBalance(newBalance);
-      setWithdrawDialog(false);
-      setWithdrawAmount('');
-      toast.success(`Successfully withdrew $${amount}`);
-    } catch (error) {
-      console.error('Error withdrawing from wallet:', error);
-      toast.error(error.message || 'Failed to withdraw from wallet');
-    }
   };
 
   const handlePaymentSubmit = async () => {
@@ -214,23 +153,23 @@ const VideoFeed = ({ onProfileView }) => {
         return;
       }
 
+      setShowPaymentSuccess(false);
+      
       // Check wallet balance
+      const walletBalance = await getUserWalletBalance(user.uid);
       if (walletBalance < amount) {
-        toast.error('Insufficient wallet balance');
+        toast.error('Insufficient wallet balance. Please recharge your wallet.');
         return;
       }
 
-      // Track investment
+      // Track investment (this will automatically deduct from wallet)
       await trackInvestment(user.uid, {
         videoId: TEMP_VIDEOS[currentIndex].id,
         title: TEMP_VIDEOS[currentIndex].title,
         creator: TEMP_VIDEOS[currentIndex].creator,
-        domain: TEMP_VIDEOS[currentIndex].description.split(' ')[0],
+        domain: TEMP_VIDEOS[currentIndex].description.split(' ')[0], // Using first word of description as domain
         amount,
       });
-
-      // Update local wallet balance
-      setWalletBalance(prev => prev - amount);
 
       setShowPaymentSuccess(true);
       setTimeout(() => {
@@ -241,7 +180,7 @@ const VideoFeed = ({ onProfileView }) => {
       toast.success(`Successfully invested $${amount}`);
     } catch (error) {
       console.error('Error processing investment:', error);
-      toast.error(error.message || 'Failed to process investment');
+      toast.error('Failed to process investment. Please try again.');
     }
   };
 
@@ -286,8 +225,9 @@ const VideoFeed = ({ onProfileView }) => {
   };
 
   const handleSwipe = (direction) => {
-    if (direction === 'right' && TEMP_VIDEOS[currentIndex]) {
-      onProfileView?.(TEMP_VIDEOS[currentIndex]);
+    if (direction === 'left') {
+      // Navigate to creator's profile
+      navigate(`/profile/${TEMP_VIDEOS[currentIndex].creator.replace(/\s+/g, '-').toLowerCase()}`);
     }
     
     // Animate the card off screen
@@ -327,7 +267,7 @@ const VideoFeed = ({ onProfileView }) => {
         flexDirection: 'column',
         alignItems: 'center',
         position: 'relative',
-        bgcolor: '#f5f5f5',
+        bgcolor: '#1a1a1a',
         overflow: 'hidden',
         pt: 2
       }}
@@ -417,16 +357,20 @@ const VideoFeed = ({ onProfileView }) => {
                 bottom: 0,
                 left: 0,
                 right: 0,
-                bgcolor: 'rgba(0, 0, 0, 0.7)',
+                bgcolor: 'rgba(0, 0, 0, 0.85)',
                 color: 'white',
-                p: 2,
+                p: 3,
                 borderBottomLeftRadius: '8px',
                 borderBottomRightRadius: '8px',
               }}
             >
-              <Typography variant="h6">{TEMP_VIDEOS[currentIndex]?.title}</Typography>
-              <Typography variant="body2">{TEMP_VIDEOS[currentIndex]?.creator}</Typography>
-              <Typography variant="body2" sx={{ mt: 1 }}>
+              <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
+                {TEMP_VIDEOS[currentIndex]?.title}
+              </Typography>
+              <Typography variant="subtitle1" sx={{ color: '#e0e0e0', mb: 1 }}>
+                {TEMP_VIDEOS[currentIndex]?.creator}
+              </Typography>
+              <Typography variant="body1" sx={{ color: '#f5f5f5', mb: 2, lineHeight: 1.6 }}>
                 {TEMP_VIDEOS[currentIndex]?.description}
               </Typography>
               
@@ -434,127 +378,134 @@ const VideoFeed = ({ onProfileView }) => {
                 <Button
                   variant="contained"
                   startIcon={<ThumbUp />}
-                  color={likes[TEMP_VIDEOS[currentIndex]?.id] ? "error" : "inherit"}
+                  sx={{
+                    bgcolor: likes[TEMP_VIDEOS[currentIndex]?.id] ? '#f44336' : '#2196f3',
+                    color: 'white',
+                    '&:hover': {
+                      bgcolor: likes[TEMP_VIDEOS[currentIndex]?.id] ? '#d32f2f' : '#1976d2'
+                    }
+                  }}
                   onClick={() => handleLike(TEMP_VIDEOS[currentIndex]?.id)}
                 >
                   Like
                 </Button>
                 <Button
                   variant="contained"
-                  startIcon={<BusinessCenter />}
-                  onClick={() => handleConnect(TEMP_VIDEOS[currentIndex])}
-                >
-                  Connect
-                </Button>
-                <Button
-                  variant="contained"
                   startIcon={<AttachMoney />}
-                  color="success"
                   onClick={handlePaymentOpen}
+                  sx={{
+                    bgcolor: '#4caf50',
+                    color: 'white',
+                    '&:hover': {
+                      bgcolor: '#388e3c'
+                    }
+                  }}
                 >
                   Invest
                 </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<BusinessCenter />}
+                  onClick={() => handleConnect(TEMP_VIDEOS[currentIndex])}
+                  sx={{
+                    bgcolor: '#ff9800',
+                    color: 'white',
+                    '&:hover': {
+                      bgcolor: '#f57c00'
+                    }
+                  }}
+                >
+                  Connect
+                </Button>
               </Stack>
-
-              {/* Payment Dialog */}
-              <Dialog open={paymentDialog} onClose={handlePaymentClose}>
-                <DialogTitle>Enter Investment Amount</DialogTitle>
-                <DialogContent>
-                  <TextField
-                    autoFocus
-                    margin="dense"
-                    label="Amount ($)"
-                    type="number"
-                    fullWidth
-                    value={paymentAmount}
-                    onChange={(e) => setPaymentAmount(e.target.value)}
-                    InputProps={{
-                      startAdornment: '$'
-                    }}
-                  />
-                </DialogContent>
-                <DialogActions>
-                  <Button onClick={handlePaymentClose}>Cancel</Button>
-                  <Button onClick={handlePaymentSubmit} variant="contained" color="primary">
-                    Pay
-                  </Button>
-                </DialogActions>
-              </Dialog>
-
-              {/* Payment Success Dialog */}
-              <Dialog open={showPaymentSuccess}>
-                <DialogContent>
-                  <Typography variant="h6" align="center">
-                    Payment Successful!
-                  </Typography>
-                  <Typography variant="body1" align="center" sx={{ mt: 1 }}>
-                    Amount Paid: ${paymentAmount}
-                  </Typography>
-                </DialogContent>
-              </Dialog>
             </Box>
           </Box>
         </Card>
       </Box>
 
-      {/* Swipe Buttons */}
+      {/* Navigation Controls */}
       <Box
         sx={{
-          position: 'fixed',
+          position: 'absolute',
           bottom: 20,
+          left: 0,
+          right: 0,
           display: 'flex',
           justifyContent: 'center',
-          gap: 2,
-          width: '100%',
-          zIndex: 2
+          gap: 4,
+          color: 'white'
         }}
       >
-        <IconButton
-          onClick={() => handleSwipe('left')}
-          sx={{
-            bgcolor: 'white',
-            '&:hover': { bgcolor: '#ffebee' },
-          }}
-        >
-          <Close sx={{ color: '#ff1744' }} />
-        </IconButton>
-        <IconButton
-          onClick={() => handleSwipe('right')}
-          sx={{
-            bgcolor: 'white',
-            '&:hover': { bgcolor: '#e8f5e9' },
-          }}
-        >
-          <Favorite sx={{ color: '#00c853' }} />
-        </IconButton>
+        {isTouchDevice ? (
+          // Show swipe instructions for touch devices
+          <>
+            <Box sx={{ textAlign: 'center' }}>
+              <ArrowBack sx={{ fontSize: 40, color: 'white' }} />
+              <Typography sx={{ color: 'white', fontWeight: 500 }}>
+                Swipe Left for Profile
+              </Typography>
+            </Box>
+            <Box sx={{ textAlign: 'center' }}>
+              <ArrowForward sx={{ fontSize: 40, color: 'white' }} />
+              <Typography sx={{ color: 'white', fontWeight: 500 }}>
+                Swipe Right for Next
+              </Typography>
+            </Box>
+          </>
+        ) : (
+          // Show buttons for non-touch devices
+          <>
+            <Box 
+              sx={{ 
+                textAlign: 'center',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center'
+              }}
+            >
+              <IconButton
+                onClick={() => handleSwipe('left')}
+                sx={{
+                  bgcolor: 'rgba(255, 255, 255, 0.9)',
+                  mb: 1,
+                  '&:hover': { bgcolor: 'rgba(255, 255, 255, 1)' },
+                  width: 60,
+                  height: 60
+                }}
+              >
+                <ArrowBack sx={{ fontSize: 30, color: '#1a1a1a' }} />
+              </IconButton>
+              <Typography sx={{ color: 'white', fontWeight: 500 }}>Profile</Typography>
+            </Box>
+            <Box 
+              sx={{ 
+                textAlign: 'center',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center'
+              }}
+            >
+              <IconButton
+                onClick={() => handleSwipe('right')}
+                sx={{
+                  bgcolor: 'rgba(255, 255, 255, 0.9)',
+                  mb: 1,
+                  '&:hover': { bgcolor: 'rgba(255, 255, 255, 1)' },
+                  width: 60,
+                  height: 60
+                }}
+              >
+                <ArrowForward sx={{ fontSize: 30, color: '#1a1a1a' }} />
+              </IconButton>
+              <Typography sx={{ color: 'white', fontWeight: 500 }}>Next</Typography>
+            </Box>
+          </>
+        )}
       </Box>
 
-      {/* Wallet Balance Display */}
-      <Box sx={{ position: 'fixed', top: 16, right: 16, zIndex: 1000 }}>
-        <Paper sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Typography variant="h6">
-            Wallet: ${walletBalance.toFixed(2)}
-          </Typography>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => setRechargeDialog(true)}
-          >
-            Recharge
-          </Button>
-          <Button
-            variant="outlined"
-            color="primary"
-            onClick={() => setWithdrawDialog(true)}
-          >
-            Withdraw
-          </Button>
-        </Paper>
-      </Box>
-
-      {/* Recharge Dialog */}
-      <Dialog open={rechargeDialog} onClose={() => setRechargeDialog(false)}>
-        <DialogTitle>Recharge Wallet</DialogTitle>
+      {/* Payment Dialog */}
+      <Dialog open={paymentDialog} onClose={handlePaymentClose}>
+        <DialogTitle>Enter Investment Amount</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
@@ -562,44 +513,31 @@ const VideoFeed = ({ onProfileView }) => {
             label="Amount ($)"
             type="number"
             fullWidth
-            value={rechargeAmount}
-            onChange={(e) => setRechargeAmount(e.target.value)}
+            value={paymentAmount}
+            onChange={(e) => setPaymentAmount(e.target.value)}
             InputProps={{
               startAdornment: '$'
             }}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRechargeDialog(false)}>Cancel</Button>
-          <Button onClick={handleRecharge} variant="contained" color="primary">
-            Recharge
+          <Button onClick={handlePaymentClose}>Cancel</Button>
+          <Button onClick={handlePaymentSubmit} variant="contained" color="primary">
+            Pay
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Withdraw Dialog */}
-      <Dialog open={withdrawDialog} onClose={() => setWithdrawDialog(false)}>
-        <DialogTitle>Withdraw from Wallet</DialogTitle>
+      {/* Payment Success Dialog */}
+      <Dialog open={showPaymentSuccess}>
         <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Amount ($)"
-            type="number"
-            fullWidth
-            value={withdrawAmount}
-            onChange={(e) => setWithdrawAmount(e.target.value)}
-            InputProps={{
-              startAdornment: '$'
-            }}
-          />
+          <Typography variant="h6" align="center">
+            Payment Successful!
+          </Typography>
+          <Typography variant="body1" align="center" sx={{ mt: 1 }}>
+            Amount Paid: ${paymentAmount}
+          </Typography>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setWithdrawDialog(false)}>Cancel</Button>
-          <Button onClick={handleWithdraw} variant="contained" color="primary">
-            Withdraw
-          </Button>
-        </DialogActions>
       </Dialog>
     </Box>
   );

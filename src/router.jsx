@@ -6,9 +6,11 @@ import Chat from './components/Chat';
 import Settings from './components/Settings';
 import Login from './components/Login';
 import Register from './components/Register';
-import MyInvestments from './components/MyInvestments';
+import News from './components/News';
 import ErrorBoundary from './components/ErrorBoundary';
 import { auth } from './firebase';
+import Profile from './components/Profile';
+import Dashboard from './components/Dashboard';
 
 // Protected route wrapper
 const requireAuth = async () => {
@@ -28,8 +30,7 @@ const router = createBrowserRouter([
     children: [
       {
         path: '/',
-        element: <Home />,
-        errorElement: <ErrorBoundary />
+        element: <Dashboard />
       },
       {
         path: '/pitches',
@@ -42,13 +43,18 @@ const router = createBrowserRouter([
         errorElement: <ErrorBoundary />
       },
       {
-        path: '/investments',
-        element: <MyInvestments />,
+        path: '/news',
+        element: <News />,
         errorElement: <ErrorBoundary />
       },
       {
         path: '/settings',
         element: <Settings />,
+        errorElement: <ErrorBoundary />
+      },
+      {
+        path: '/profile/:creatorId',
+        element: <Profile />,
         errorElement: <ErrorBoundary />
       }
     ]

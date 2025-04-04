@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Drawer,
@@ -19,10 +19,7 @@ import {
   Button,
   TextField,
   Chip,
-  Typography,
-  Paper,
-  Divider,
-  useMediaQuery
+  Typography
 } from '@mui/material';
 import {
   Home,
@@ -32,25 +29,11 @@ import {
   Settings,
   Logout,
   VerifiedUser,
-  VideoLibrary,
-  Newspaper,
-  Menu as MenuIcon,
-  TrendingUp as TrendingUpIcon,
-  Search as SearchIcon,
-  Notifications as NotificationsIcon,
-  Add as AddIcon,
-  AccountBalanceWallet as WalletIcon,
-  AccountCircle as AccountCircleIcon
+  Newspaper
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
-import { auth, db } from '../firebase';
+import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
-import { getUserWallet, getWalletTransactions, addWalletTransaction } from '../utils/firebaseHelpers';
-import { Link } from 'react-router-dom';
-import { useTheme } from '@mui/material/styles';
-import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
-import { increment } from 'firebase/firestore';
-import { toast } from 'react-toastify';
 
 const DRAWER_WIDTH = 240;
 
@@ -67,84 +50,14 @@ const Layout = () => {
     description: 'Experienced investor with focus on emerging technologies',
     isVerified: false
   });
-  const [walletBalance, setWalletBalance] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [user, setUser] = useState(null);
-  const [walletOpen, setWalletOpen] = useState(false);
-  const [amount, setAmount] = useState('');
-  const [createPostOpen, setCreatePostOpen] = useState(false);
-  const [postContent, setPostContent] = useState('');
-  const [postImage, setPostImage] = useState(null);
-  const [transactions, setTransactions] = useState([]);
-  const [showTransactions, setShowTransactions] = useState(false);
 
   const menuItems = [
     { text: 'Home', icon: <Home />, path: '/' },
     { text: 'Pitches', icon: <Videocam />, path: '/pitches' },
     { text: 'Chats', icon: <Chat />, path: '/chats' },
-    { text: 'News', icon: <Newspaper />, path: '/news' },
+    { text: 'News', icon: <Newspaper />, path: '/News' },
     { text: 'Settings', icon: <Settings />, path: '/settings' }
   ];
-
-  useEffect(() => {
-    const loadWalletBalance = async () => {
-      try {
-        const user = auth.currentUser;
-        if (user) {
-          const balance = await getUserWallet(user.uid);
-          setWalletBalance(balance);
-        }
-      } catch (error) {
-        console.error('Error loading wallet balance:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadWalletBalance();
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        setUser(user);
-        // Fetch wallet balance
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          setWalletBalance(userDoc.data().walletBalance || 0);
-        } else {
-          // Create user document if it doesn't exist
-          await setDoc(doc(db, 'users', user.uid), {
-            walletBalance: 0,
-            displayName: user.displayName,
-            email: user.email,
-            photoURL: user.photoURL
-          });
-        }
-      } else {
-        setUser(null);
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    const loadTransactions = async () => {
-      if (user) {
-        try {
-          const userTransactions = await getWalletTransactions(user.uid);
-          setTransactions(userTransactions);
-        } catch (error) {
-          console.error('Error loading transactions:', error);
-        }
-      }
-    };
-    loadTransactions();
-  }, [user]);
 
   const handleLogout = async () => {
     try {
@@ -152,7 +65,6 @@ const Layout = () => {
       navigate('/login');
     } catch (error) {
       console.error('Error signing out:', error);
-      toast.error('Failed to sign out');
     }
   };
 
@@ -174,218 +86,53 @@ const Layout = () => {
     setProfileData(prev => ({ ...prev, isVerified: true }));
   };
 
-  const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
-  };
-
-  const handleWalletClick = () => {
-    setWalletOpen(true);
-  };
-
-  const handleAddMoney = async () => {
-    if (!amount || isNaN(amount) || amount <= 0) {
-      toast.error('Please enter a valid amount');
-      return;
-    }
-
-    try {
-      const user = auth.currentUser;
-      if (!user) {
-        toast.error('Please log in to add money');
-        return;
-      }
-
-      // Add transaction and get new balance
-      const newBalance = await addWalletTransaction(
-        user.uid,
-        parseFloat(amount),
-        'deposit',
-        'Wallet deposit'
-      );
-      
-      // Update local balance
-      setWalletBalance(newBalance);
-      setAmount('');
-      setWalletOpen(false);
-      toast.success('Money added successfully!');
-
-      // Refresh transactions
-      const updatedTransactions = await getWalletTransactions(user.uid);
-      setTransactions(updatedTransactions);
-    } catch (error) {
-      console.error('Error adding money:', error);
-      toast.error('Failed to add money. Please try again.');
-    }
-  };
-
-  const handleWithdrawMoney = async () => {
-    if (!amount || isNaN(amount) || amount <= 0) {
-      toast.error('Please enter a valid amount');
-      return;
-    }
-
-    if (parseFloat(amount) > walletBalance) {
-      toast.error('Insufficient balance');
-      return;
-    }
-
-    try {
-      const user = auth.currentUser;
-      if (!user) {
-        toast.error('Please log in to withdraw money');
-        return;
-      }
-
-      // Add transaction and get new balance
-      const newBalance = await addWalletTransaction(
-        user.uid,
-        parseFloat(amount),
-        'withdrawal',
-        'Wallet withdrawal'
-      );
-      
-      // Update local balance
-      setWalletBalance(newBalance);
-      setAmount('');
-      setWalletOpen(false);
-      toast.success('Money withdrawn successfully!');
-
-      // Refresh transactions
-      const updatedTransactions = await getWalletTransactions(user.uid);
-      setTransactions(updatedTransactions);
-    } catch (error) {
-      console.error('Error withdrawing money:', error);
-      toast.error('Failed to withdraw money. Please try again.');
-    }
-  };
-
-  const handleCreatePost = async () => {
-    if (!postContent.trim()) {
-      toast.error('Please enter post content');
-      return;
-    }
-
-    try {
-      const postRef = doc(db, 'posts');
-      await setDoc(postRef, {
-        content: postContent,
-        imageUrl: postImage ? await uploadImage(postImage) : null,
-        userId: user.uid,
-        createdAt: new Date(),
-        likes: 0,
-        comments: []
-      });
-      setPostContent('');
-      setPostImage(null);
-      setCreatePostOpen(false);
-      toast.success('Post created successfully!');
-    } catch (error) {
-      console.error('Error creating post:', error);
-      toast.error('Failed to create post');
-    }
-  };
-
-  const drawer = (
-    <Box sx={{ overflow: 'auto' }}>
-      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Avatar 
-          src={user?.photoURL} 
-          alt={user?.displayName}
-          onClick={handleProfileClick}
-          sx={{ cursor: 'pointer' }}
-        />
-        <Typography variant="subtitle1">{user?.displayName || 'User'}</Typography>
-      </Box>
-      <List>
-        {menuItems.map((item) => (
-          <ListItem 
-            button 
-            key={item.text}
-            onClick={() => {
-              navigate(item.path);
-              if (isMobile) setMobileOpen(false);
-            }}
-          >
-            <ListItemIcon>{item.icon}</ListItemIcon>
-            <ListItemText primary={item.text} />
-          </ListItem>
-        ))}
-        <Divider />
-        <ListItem button onClick={handleLogout}>
-          <ListItemIcon><Logout /></ListItemIcon>
-          <ListItemText primary="Logout" />
-        </ListItem>
-      </List>
-    </Box>
-  );
-
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-      {/* Sidebar */}
-      <Box
-        component="nav"
+    <Box sx={{ display: 'flex' }}>
+      {/* Fixed Sidebar */}
+      <Drawer
+        variant="permanent"
         sx={{
-          width: { sm: DRAWER_WIDTH },
-          flexShrink: { sm: 0 },
-          display: { xs: 'none', sm: 'block' },
+          width: DRAWER_WIDTH,
+          flexShrink: 0,
+          '& .MuiDrawer-paper': {
+            width: DRAWER_WIDTH,
+            boxSizing: 'border-box',
+          },
         }}
       >
-        <Drawer
-          variant="permanent"
-          sx={{
-            display: { xs: 'none', sm: 'block' },
-            '& .MuiDrawer-paper': {
-              boxSizing: 'border-box',
-              width: DRAWER_WIDTH,
-              bgcolor: theme.palette.background.default,
-              borderRight: `1px solid ${theme.palette.divider}`,
-            },
-          }}
-          open
-        >
-          {drawer}
-        </Drawer>
-      </Box>
+        <Toolbar /> {/* Spacer for AppBar */}
+        <Box sx={{ overflow: 'auto', mt: 2 }}>
+          <List>
+            {menuItems.map((item) => (
+              <ListItem
+                button
+                key={item.text}
+                selected={location.pathname === item.path}
+                onClick={() => navigate(item.path)}
+              >
+                <ListItemIcon>{item.icon}</ListItemIcon>
+                <ListItemText primary={item.text} />
+              </ListItem>
+            ))}
+            <ListItem button onClick={handleLogout}>
+              <ListItemIcon><Logout /></ListItemIcon>
+              <ListItemText primary="Logout" />
+            </ListItem>
+          </List>
+        </Box>
+      </Drawer>
 
       {/* Main Content */}
       <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
-        {/* AppBar */}
-        <AppBar position="static" color="default" elevation={0}>
-          <Toolbar>
-            <IconButton
-              color="inherit"
-              aria-label="open drawer"
-              edge="start"
-              onClick={handleDrawerToggle}
-              sx={{ mr: 2, display: { sm: 'none' } }}
-            >
-              <MenuIcon />
-            </IconButton>
-            <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-              Team Logix
-            </Typography>
-            <IconButton color="inherit" onClick={handleWalletClick}>
-              <WalletIcon />
-              <Typography variant="body2" sx={{ ml: 1 }}>
-                ${walletBalance.toFixed(2)}
-              </Typography>
-            </IconButton>
-            <IconButton color="inherit">
-              <SearchIcon />
-            </IconButton>
-            <IconButton color="inherit">
-              <NotificationsIcon />
-            </IconButton>
-            <IconButton color="inherit" onClick={() => setCreatePostOpen(true)}>
-              <AddIcon />
+        <AppBar position="fixed" sx={{ width: `calc(100% - ${DRAWER_WIDTH}px)` }}>
+          <Toolbar sx={{ justifyContent: 'flex-end' }}>
+            <IconButton onClick={handleProfileClick}>
+              <Avatar src={profileData.avatarUrl} />
             </IconButton>
           </Toolbar>
         </AppBar>
-
-        {/* Content */}
-        <Box sx={{ mt: 2 }}>
-          <Outlet />
-        </Box>
+        <Toolbar /> {/* Spacer for AppBar */}
+        <Outlet /> {/* This renders the nested routes */}
       </Box>
 
       {/* Profile Menu */}
@@ -394,14 +141,7 @@ const Layout = () => {
         open={Boolean(profileMenu)}
         onClose={handleProfileClose}
       >
-        <MenuItem onClick={() => { navigate('/profile'); handleProfileClose(); }}>
-          View Profile
-        </MenuItem>
-        <MenuItem onClick={() => { navigate('/settings'); handleProfileClose(); }}>
-          Settings
-        </MenuItem>
-        <Divider />
-        <MenuItem onClick={handleLogout}>Logout</MenuItem>
+        <MenuItem onClick={handleProfileEdit}>Edit Profile</MenuItem>
       </Menu>
 
       {/* Profile Dialog */}
@@ -489,117 +229,6 @@ const Layout = () => {
         <DialogActions>
           <Button onClick={() => setProfileDialog(false)}>Cancel</Button>
           <Button variant="contained" onClick={() => setProfileDialog(false)}>Save</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Wallet Dialog */}
-      <Dialog open={walletOpen} onClose={() => setWalletOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Wallet Management</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Amount"
-            type="number"
-            fullWidth
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-          />
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            Current Balance: ${walletBalance.toFixed(2)}
-          </Typography>
-          
-          <Button
-            variant="text"
-            onClick={() => setShowTransactions(!showTransactions)}
-            sx={{ mt: 2 }}
-          >
-            {showTransactions ? 'Hide Transactions' : 'Show Transaction History'}
-          </Button>
-
-          {showTransactions && (
-            <Box sx={{ mt: 2, maxHeight: 200, overflow: 'auto' }}>
-              {transactions.map((transaction) => (
-                <Box
-                  key={transaction.id}
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    py: 1,
-                    borderBottom: '1px solid',
-                    borderColor: 'divider'
-                  }}
-                >
-                  <Box>
-                    <Typography variant="body2">
-                      {transaction.description}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {new Date(transaction.timestamp?.toDate()).toLocaleString()}
-                    </Typography>
-                  </Box>
-                  <Typography
-                    variant="body2"
-                    color={transaction.type === 'deposit' ? 'success.main' : 'error.main'}
-                  >
-                    {transaction.type === 'deposit' ? '+' : '-'}${transaction.amount.toFixed(2)}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setWalletOpen(false)}>Cancel</Button>
-          <Button onClick={handleWithdrawMoney} variant="outlined" color="error">
-            Withdraw
-          </Button>
-          <Button onClick={handleAddMoney} variant="contained" color="primary">
-            Add Money
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Create Post Dialog */}
-      <Dialog open={createPostOpen} onClose={() => setCreatePostOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Create New Post</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="What's on your mind?"
-            type="text"
-            fullWidth
-            multiline
-            rows={4}
-            value={postContent}
-            onChange={(e) => setPostContent(e.target.value)}
-          />
-          <Button
-            variant="outlined"
-            component="label"
-            sx={{ mt: 2 }}
-          >
-            Upload Image
-            <input
-              type="file"
-              hidden
-              accept="image/*"
-              onChange={(e) => setPostImage(e.target.files[0])}
-            />
-          </Button>
-          {postImage && (
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              {postImage.name}
-            </Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreatePostOpen(false)}>Cancel</Button>
-          <Button onClick={handleCreatePost} variant="contained" color="primary">
-            Post
-          </Button>
         </DialogActions>
       </Dialog>
     </Box>
